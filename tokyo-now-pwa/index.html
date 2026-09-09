@@ -17,7 +17,7 @@
   </style>
 </head>
 <body>
-<header><div class="top"><div class="brand">東京NOW <span style="font-size:11px;opacity:.65">v0.05.2</span></div><div class="clock" id="clock"></div></div></header>
+<header><div class="top"><div class="brand">東京NOW <span style="font-size:11px;opacity:.65">v0.05.3</span></div><div class="clock" id="clock"></div></div></header>
 <div class="subhead"><div class="status"><span class="dot" id="dot"></span><span id="status">イベント情報を取得中…</span></div><button class="refresh" id="refresh">更新</button></div>
 <div class="tabs" id="tabs"></div>
 <main><div class="hero" id="hero"></div><div id="list" class="loading">イベント情報を取得しています…</div></main>
@@ -60,6 +60,13 @@ function normalizeTokyoDomePayload(payload){
     url:x.url||'https://www.tokyo-dome.co.jp/dome/event/schedule.html',source:x.source||'東京ドーム公式',
     sourceUpdated:x.sourceUpdated||today(),attendanceScore:x.attendanceScore||0,raw:x.raw||x
   })).filter(x=>x.startDate&&x.title)
+}
+
+function overlaps(event, start, end){
+  if(!event.startDate) return false;
+  const eventStart = event.startDate;
+  const eventEnd = event.endDate || event.startDate;
+  return eventStart <= end && eventEnd >= start;
 }
 
 function dataForActive(){if(active==='取得データ')return allEvents.slice();const s=today(),e=active==='本日'?s:endOfMonth();return allEvents.filter(x=>overlaps(x,s,e)).sort((a,b)=>(a.startDate||'9999').localeCompare(b.startDate||'9999')||importanceScore(b)-importanceScore(a))}
