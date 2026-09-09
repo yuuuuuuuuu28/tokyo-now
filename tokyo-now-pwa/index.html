@@ -17,7 +17,7 @@
   </style>
 </head>
 <body>
-<header><div class="top"><div class="brand">東京NOW <span style="font-size:11px;opacity:.65">v0.05</span></div><div class="clock" id="clock"></div></div></header>
+<header><div class="top"><div class="brand">東京NOW <span style="font-size:11px;opacity:.65">v0.05.1</span></div><div class="clock" id="clock"></div></div></header>
 <div class="subhead"><div class="status"><span class="dot" id="dot"></span><span id="status">イベント情報を取得中…</span></div><button class="refresh" id="refresh">更新</button></div>
 <div class="tabs" id="tabs"></div>
 <main><div class="hero" id="hero"></div><div id="list" class="loading">イベント情報を取得しています…</div></main>
@@ -51,8 +51,33 @@ function daysBetween(a,b){if(!a)return 1;const x=new Date(a+'T00:00:00'),y=new D
 function importanceFactors(x){const d=daysBetween(x.startDate,x.endDate);return {venueScale:x.place==='東京ドーム'?5:x.place.includes('東京ビッグサイト')?4:1,duration:d===1?5:d<=3?4:d<=7?3:d<=14?2:1,eventType:/コンサート|ライブ|野球|スポーツ|展示会|総合展|フェス/i.test((x.category||'')+' '+x.title)?5:3,timing:x.startTime&&parseInt(x.startTime)>=17?5:3,attendance:x.attendanceScore||0,confidence:x.source.includes('公式')||x.source.includes('オープンデータ')?5:3}}
 function importanceScore(x){const f=importanceFactors(x);let sum=0,max=0;for(const [k,w] of Object.entries(importanceWeights)){if(f[k]>0){sum+=f[k]*w;max+=5*w}}return max?Math.round(sum/max*100):0}
 function importanceLabel(x){const n=importanceScore(x);return n>=80?'🔥 大規模':n>=60?'● 注目':n>=40?'注目候補':'通常'}
-function normalizeTokyoDome(html){const doc=new DOMParser().parseFromString(html,'text/html');const rows=[...doc.querySelectorAll('tr')];const now=new Date(),Y=now.getFullYear(),M=now.getMonth()+1,out=[];for(const tr of rows){const text=(tr.innerText||tr.textContent||'').replace(/\s+/g,' ').trim();const dm=text.match(/^(\d{1,2})\s*[（(][^）)]*[）)]\s*(.*)$/);if(!dm)continue;const day=+dm[1],rest=dm[2].trim();if(!rest||rest==='|')continue;const links=[...tr.querySelectorAll('a')].map(a=>(a.textContent||'').trim()).filter(Boolean);let title=links.find(t=>!/^TOKYO DOME TOUR$/i.test(t)&&!/(お問い合わせ|FAQ|入会|ログイン)/.test(t))||rest.replace(/^(野球|コンサート|スポーツ|イベント)\s+/,'').split(/開場|開始|開演|<お問い合わせ>/)[0].trim();if(!title)continue;const category=(rest.match(/^(野球|コンサート|スポーツ|イベント)/)||[])[1]||'';const tm=rest.match(/(?:開始|開演)\s*(\d{1,2}:\d{2})/);const date=`${Y}-${pad(M)}-${pad(day)}`;out.push({id:`dome-${date}-${out.length}`,title,startDate:date,endDate:date,startTime:tm?tm[1]:'',place:'東京ドーム',area:'文京区後楽',category,desc:'東京ドーム公式スケジュール掲載イベント',url:'https://www.tokyo-dome.co.jp/dome/event/schedule.html',source:'東京ドーム公式',sourceUpdated:today(),attendanceScore:0,raw:{text}})}return out}
-function overlaps(x,start,end){if(!x.startDate&&!x.endDate)return false;const a=x.startDate||x.endDate,b=x.endDate||x.startDate;return a<=end&&b>=start}
+function normalizeTokyoDome(html){
+  const doc=new DOMParser().parseFromString(html,'text/html');
+  const body=(doc.body?.innerText||doc.body?.textContent||'').replace(/\r/g,'');
+  const lines=body.split(/\n+/).map(x=>x.replace(/[\t ]+/g,' ').trim()).filter(Boolean);
+  const out=[];let year=null,month=null;
+  const ignore=/^(TOKYO DOME TOUR|お問い合わせ|新規入会|ログイン|チケプラ|ローチケ|DISK ?GARAGE|キョードー|TEL[:：]|平日 |土日祝 |〖|（営業時間)/i;
+  for(let i=0;i<lines.length;i++){
+    const line=lines[i];
+    const ym=line.match(/^(20\d{2})年(\d{1,2})月$/);if(ym){year=+ym[1];month=+ym[2];continue}
+    if(!year||!month)continue;
+    const dm=line.match(/^(\d{1,2})\s*[（(][^）)]*[）)]\s*(?:\||｜)?\s*(.*)$/);if(!dm)continue;
+    const day=+dm[1];let rest=(dm[2]||'').trim();
+    if(!rest){const nxt=lines[i+1]||'';if(!/^(\d{1,2})\s*[（(]/.test(nxt)&&!/^20\d{2}年\d{1,2}月$/.test(nxt))rest=nxt}
+    if(!rest)continue;
+    rest=rest.replace(/TOKYO DOME TOUR/g,' ').replace(/\s+/g,' ').trim();
+    const category=(rest.match(/^(野球|コンサート|スポーツ|イベント)\s+/)||[])[1]||'';
+    rest=rest.replace(/^(野球|コンサート|スポーツ|イベント)\s+/,'');
+    rest=rest.replace(/^(野球|コンサート|スポーツ|イベント)\s+/,'');
+    const title=rest.split(/\s+(?:開場|開始|開演)\s*\d{1,2}:\d{2}|\s*<お問い合わせ>|\s*お問い合わせ/)[0].trim();
+    if(!title||ignore.test(title))continue;
+    const open=(rest.match(/開場\s*(\d{1,2}:\d{2})/)||[])[1]||'';
+    const start=(rest.match(/(?:開始|開演)\s*(\d{1,2}:\d{2})/)||[])[1]||'';
+    const date=`${year}-${pad(month)}-${pad(day)}`;
+    out.push({id:`dome-${date}-${out.length}`,title,startDate:date,endDate:date,startTime:start,openTime:open,place:'東京ドーム',area:'文京区後楽',category,desc:[open&&`開場 ${open}`,start&&`${category==='コンサート'||category==='イベント'?'開演':'開始'} ${start}`].filter(Boolean).join('／')||'東京ドーム公式スケジュール掲載イベント',url:'https://www.tokyo-dome.co.jp/dome/event/schedule.html',source:'東京ドーム公式',sourceUpdated:today(),attendanceScore:0,raw:{text:line}})
+  }
+  const seen=new Set();return out.filter(x=>{const k=x.startDate+'|'+x.title;if(seen.has(k))return false;seen.add(k);return true})
+}
 function dataForActive(){if(active==='取得データ')return allEvents.slice();const s=today(),e=active==='本日'?s:endOfMonth();return allEvents.filter(x=>overlaps(x,s,e)).sort((a,b)=>(a.startDate||'9999').localeCompare(b.startDate||'9999')||importanceScore(b)-importanceScore(a))}
 function renderTabs(){els.tabs.innerHTML='';tabs.forEach(t=>{const b=document.createElement('button');b.className='tab'+(t===active?' active':'');b.textContent=t;b.onclick=()=>{active=t;renderTabs();renderHero();renderList()};els.tabs.appendChild(b)})}
 function sourceBadge(label,state){const mark=state.status==='ok'?'🟢':state.status==='empty'?'🟡':state.status==='err'?'🔴':'⚪';const detail=state.status==='err'?`取得失敗${state.error?` (${state.error})`:''}`:`${state.count}件`;return `<span class="sourcePill">${mark} ${label} ${escapeHtml(detail)}</span>`}
