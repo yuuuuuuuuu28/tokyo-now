@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <title>東京NOW</title>
+  <style>
+    *{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#f3f4f6;color:#111827}
+    header{position:sticky;top:0;background:#0f172a;color:#fff;padding:14px 16px;padding-top:calc(14px + env(safe-area-inset-top));z-index:5}
+    .top{display:flex;justify-content:space-between;align-items:center}.brand{font-weight:900;font-size:22px;letter-spacing:.02em}.clock{font-variant-numeric:tabular-nums;font-size:14px;opacity:.9}
+    .subhead{display:flex;justify-content:space-between;align-items:center;background:#fff;padding:10px 12px;border-bottom:1px solid #e5e7eb;position:sticky;top:58px;z-index:4}
+    .status{display:flex;align-items:center;gap:8px;font-size:13px;color:#4b5563}.dot{width:9px;height:9px;border-radius:50%;background:#9ca3af}.dot.ok{background:#22c55e}.dot.err{background:#ef4444}.refresh{border:0;background:#e5e7eb;padding:8px 11px;border-radius:10px;font-weight:800}
+    .tabs{display:flex;gap:8px;overflow:auto;padding:10px 12px 6px;background:#fff;border-bottom:1px solid #e5e7eb}.tab{border:0;border-radius:999px;padding:9px 13px;background:#e5e7eb;white-space:nowrap;font-weight:800}.tab.active{background:#111827;color:#fff}
+    main{padding:10px 12px 84px}.hero{background:#fff;border-radius:16px;padding:14px;margin:10px 0;border:1px solid #e5e7eb}.hero strong{font-size:20px}.hero small{display:block;margin-top:6px;color:#6b7280;line-height:1.5}
+    .card{background:#fff;border-radius:16px;padding:14px;margin:10px 0;box-shadow:0 2px 10px rgba(0,0,0,.06);border:1px solid #eef0f2}.badge{display:inline-block;padding:4px 8px;border-radius:999px;font-size:12px;font-weight:900;background:#e5e7eb;margin-bottom:8px}.badge.live{background:#dcfce7;color:#166534}.badge.past{background:#fef3c7;color:#92400e}.title{font-size:17px;font-weight:900;margin-bottom:6px;line-height:1.35}.meta{font-size:14px;color:#4b5563;line-height:1.6}.row{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.chev{font-size:24px;color:#9ca3af}
+    .empty{text-align:center;color:#6b7280;padding:34px 18px;line-height:1.7;background:#fff;border-radius:16px;margin-top:10px}.loading{text-align:center;padding:38px;color:#6b7280}.note{font-size:12px;color:#6b7280;line-height:1.55;margin-top:12px}
+    .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;z-index:20}.modal.show{display:flex}.sheet{background:#fff;width:100%;border-radius:22px 22px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));max-height:84vh;overflow:auto}.close{float:right;border:0;background:#e5e7eb;border-radius:999px;width:36px;height:36px;font-size:18px}.map{height:160px;border-radius:14px;background:linear-gradient(135deg,#dbeafe,#e5e7eb);display:grid;place-items:center;margin-top:12px;font-weight:800;color:#374151;text-align:center;padding:12px}.link{display:inline-block;margin-top:12px;color:#0369a1;font-weight:800;text-decoration:none}
+    .install{position:fixed;left:12px;right:12px;bottom:12px;background:#111827;color:#fff;border:0;border-radius:14px;padding:14px;font-weight:800;display:none;z-index:10}
+  </style>
+</head>
+<body>
+<header><div class="top"><div class="brand">東京NOW <span style="font-size:11px;opacity:.65">v0.03</span></div><div class="clock" id="clock"></div></div></header>
+<div class="subhead"><div class="status"><span class="dot" id="dot"></span><span id="status">東京都APIに接続中…</span></div><button class="refresh" id="refresh">更新</button></div>
+<div class="tabs" id="tabs"></div>
+<main><div class="hero" id="hero"><strong>今日の東京</strong><small>東京都公式オープンデータAPIからイベント情報を取得して、今日・明日に該当するものを優先表示します。</small></div><div id="list" class="loading">イベント情報を取得しています…</div></main>
+<button id="installBtn" class="install">ホーム画面に追加</button>
+<div class="modal" id="modal"><div class="sheet"><button class="close" id="close">×</button><div id="detail"></div></div></div>
+<script>
+const API='https://api.data.metro.tokyo.lg.jp/v1/Event';
+const tabs=['今日・明日','API取得データ']; let active='今日・明日'; let allEvents=[];
+const els={list:document.getElementById('list'),tabs:document.getElementById('tabs'),status:document.getElementById('status'),dot:document.getElementById('dot'),hero:document.getElementById('hero')};
+const pad=n=>String(n).padStart(2,'0');
+const ymd=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const today=()=>{const d=new Date(); return ymd(d)};
+const tomorrow=()=>{const d=new Date();d.setDate(d.getDate()+1);return ymd(d)};
+function deepValues(obj,key,out=[]){if(!obj||typeof obj!=='object')return out;if(Array.isArray(obj)){obj.forEach(v=>deepValues(v,key,out));return out}for(const [k,v] of Object.entries(obj)){if(k===key)out.push(v);deepValues(v,key,out)}return out}
+function stringsFrom(v,out=[]){if(v==null)return out;if(typeof v==='string'||typeof v==='number')out.push(String(v));else if(Array.isArray(v))v.forEach(x=>stringsFrom(x,out));else if(typeof v==='object')Object.values(v).forEach(x=>stringsFrom(x,out));return out}
+function firstMeaningful(vals){for(const v of vals){const ss=stringsFrom(v).map(s=>s.trim()).filter(Boolean);for(const s of ss){if(s.length>1&&!['名称型','住所型','場所型','イベント型','イベントスケジュール型'].includes(s))return s}}return ''}
+function extractTitle(o){const names=deepValues(o,'名称');for(const n of names){if(Array.isArray(n)){for(const x of n){if(x&&typeof x==='object'&&x['表記']&&String(x['表記']).trim())return String(x['表記']).trim()}}if(n&&typeof n==='object'&&n['表記'])return String(n['表記']).trim()}return firstMeaningful(deepValues(o,'表記'))||'名称未設定'}
+function extractDates(o){let arr=[];for(const k of ['開始日','終了日','開催日']) arr.push(...deepValues(o,k).flatMap(stringsFrom));return [...new Set(arr.filter(s=>/^20\d{2}-\d{2}-\d{2}/.test(s)).map(s=>s.slice(0,10)))]}
+function extractPlace(o){const places=deepValues(o,'開催場所');for(const p of places){const cand=[...deepValues(p,'表記'),...deepValues(p,'住所')];const s=firstMeaningful(cand);if(s)return s}const addr=firstMeaningful(deepValues(o,'住所'));return addr||'場所情報なし'}
+function extractDesc(o){const d=firstMeaningful(deepValues(o,'説明'));return d||'説明情報なし'}
+function extractUrl(o){const vals=[...deepValues(o,'参照'),...deepValues(o,'URL'),...deepValues(o,'url')].flatMap(stringsFrom);return vals.find(s=>/^https?:\/\//.test(s))||''}
+function normalize(o,i){const dates=extractDates(o);return {id:i,title:extractTitle(o),dates,place:extractPlace(o),desc:extractDesc(o),url:extractUrl(o),raw:o}}
+function renderTabs(){els.tabs.innerHTML='';tabs.forEach(t=>{const b=document.createElement('button');b.className='tab'+(t===active?' active':'');b.textContent=t;b.onclick=()=>{active=t;renderTabs();renderList()};els.tabs.appendChild(b)})}
+function renderList(){let data=allEvents;if(active==='今日・明日'){const a=today(),b=tomorrow();data=allEvents.filter(x=>x.dates.includes(a)||x.dates.includes(b))}
+ els.list.className='';els.list.innerHTML='';
+ if(!data.length){els.list.innerHTML=`<div class="empty"><b>${active==='今日・明日'?'今日・明日に一致するイベントは見つかりませんでした':'APIから表示できるデータがありません'}</b><br><br>${active==='今日・明日'?'これは「接続失敗」ではありません。東京都Event APIには過去データも多く、今日の大型イベントを網羅しているとは限りません。上の「API取得データ」で取得自体を確認できます。':''}</div>`;return}
+ data.slice(0,80).forEach(x=>{const live=x.dates.includes(today())||x.dates.includes(tomorrow());const c=document.createElement('div');c.className='card';c.innerHTML=`<div class="row"><div><div class="badge ${live?'live':'past'}">${live?'今日・明日':'APIデータ'}</div><div class="title">${escapeHtml(x.title)}</div><div class="meta">${escapeHtml(x.place)}<br>${x.dates.length?x.dates.join(' / '):'日付情報なし'}</div></div><div class="chev">›</div></div>`;c.onclick=()=>openDetail(x);els.list.appendChild(c)})
+}
+function escapeHtml(s){return String(s||'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]))}
+function openDetail(x){const coord=findCoords(x.raw);document.getElementById('detail').innerHTML=`<div class="badge">東京都公式API</div><h2>${escapeHtml(x.title)}</h2><div class="meta">場所：${escapeHtml(x.place)}<br>日付：${x.dates.length?escapeHtml(x.dates.join(' / ')):'情報なし'}</div><p>${escapeHtml(x.desc)}</p><div class="map">${coord?`位置情報あり<br>${coord.lat}, ${coord.lng}`:'地図表示は次版で接続'}</div>${x.url?`<a class="link" target="_blank" rel="noopener" href="${x.url}">参照元を開く</a>`:''}`;document.getElementById('modal').classList.add('show')}
+function findCoords(o){const lat=deepValues(o,'緯度').flatMap(stringsFrom).find(v=>!isNaN(parseFloat(v)));const lng=deepValues(o,'経度').flatMap(stringsFrom).find(v=>!isNaN(parseFloat(v)));return lat&&lng?{lat,lng}:null}
+async function loadEvents(){els.status.textContent='東京都APIに接続中…';els.dot.className='dot';els.list.className='loading';els.list.textContent='イベント情報を取得しています…';const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),15000);try{const r=await fetch(API,{cache:'no-store',signal:controller.signal});if(!r.ok)throw new Error(`HTTP ${r.status}`);const json=await r.json();const rows=Array.isArray(json)?json:(json.items||json.data||[]);allEvents=rows.map(normalize);els.status.textContent=`東京都API 接続済み・${allEvents.length}件取得`;els.dot.className='dot ok';els.hero.innerHTML=`<strong>今日 ${today()}</strong><small>東京都公式Event APIから ${allEvents.length}件を取得。今日・明日の日付が明示されているイベントを優先表示しています。</small>`;renderList()}catch(e){console.error(e);els.status.textContent='東京都APIの取得に失敗';els.dot.className='dot err';els.list.className='';els.list.innerHTML='<div class="empty"><b>データ取得に失敗しました。</b><br>通信状態を確認して「更新」を押してください。<div class="note">エラー: '+escapeHtml(e.message)+'</div></div>'}finally{clearTimeout(timer)}}
+document.getElementById('refresh').onclick=loadEvents;document.getElementById('close').onclick=()=>document.getElementById('modal').classList.remove('show');document.getElementById('modal').onclick=e=>{if(e.target.id==='modal')e.currentTarget.classList.remove('show')};
+function tick(){document.getElementById('clock').textContent=new Intl.DateTimeFormat('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(new Date())}tick();setInterval(tick,1000);
+let deferredPrompt;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;document.getElementById('installBtn').style.display='block'});document.getElementById('installBtn').onclick=async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;document.getElementById('installBtn').style.display='none'};
+if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}))}
+renderTabs();loadEvents();
+</script>
+</body></html>
