@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#111827" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <title>東京NOW</title>
+  <style>
+    *{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#f3f4f6;color:#111827}
+    header{position:sticky;top:0;background:#111827;color:#fff;padding:14px 16px;padding-top:calc(14px + env(safe-area-inset-top));z-index:5}
+    .top{display:flex;justify-content:space-between;align-items:center}.brand{font-weight:800;font-size:22px}.clock{font-variant-numeric:tabular-nums;font-size:14px;opacity:.85}
+    .tabs{display:flex;gap:8px;overflow:auto;padding:12px 12px 6px;background:#fff;position:sticky;top:58px;z-index:4;border-bottom:1px solid #e5e7eb}
+    .tab{border:0;border-radius:999px;padding:9px 13px;background:#e5e7eb;white-space:nowrap;font-weight:700}.tab.active{background:#111827;color:#fff}
+    main{padding:10px 12px 84px}.card{background:#fff;border-radius:16px;padding:14px;margin:10px 0;box-shadow:0 2px 10px rgba(0,0,0,.06)}
+    .badge{display:inline-block;padding:4px 8px;border-radius:999px;font-size:12px;font-weight:800;background:#e5e7eb;margin-bottom:8px}.title{font-size:18px;font-weight:800;margin-bottom:6px}.meta{font-size:14px;color:#4b5563;line-height:1.6}.row{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+    .chev{font-size:24px;color:#9ca3af}.empty{text-align:center;color:#6b7280;padding:40px 10px}
+    .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;z-index:20}.modal.show{display:flex}.sheet{background:#fff;width:100%;border-radius:22px 22px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));max-height:82vh;overflow:auto}.close{float:right;border:0;background:#e5e7eb;border-radius:999px;width:36px;height:36px;font-size:18px}.map{height:180px;border-radius:14px;background:linear-gradient(135deg,#dbeafe,#e5e7eb);display:grid;place-items:center;margin-top:12px;font-weight:800;color:#374151}
+    .install{position:fixed;left:12px;right:12px;bottom:12px;background:#111827;color:#fff;border:0;border-radius:14px;padding:14px;font-weight:800;display:none;z-index:10}
+  </style>
+</head>
+<body>
+<header><div class="top"><div class="brand">東京NOW</div><div class="clock" id="clock"></div></div></header>
+<div class="tabs" id="tabs"></div>
+<main id="list"></main>
+<button id="installBtn" class="install">ホーム画面に追加</button>
+<div class="modal" id="modal"><div class="sheet"><button class="close" id="close">×</button><div id="detail"></div></div></div>
+<script>
+const items=[
+ {type:'交通',title:'首都高 都心環状線で渋滞',place:'霞が関付近',time:'現在',desc:'事故の影響で渋滞が発生している想定データです。'},
+ {type:'イベント',title:'東京ドーム 大型イベント',place:'文京区・東京ドーム',time:'21:00 終演予定',desc:'約5万人規模を想定したデモイベントです。'},
+ {type:'鉄道',title:'山手線 遅延',place:'一部区間',time:'現在',desc:'運行情報の表示例です。実データ接続は次段階で行います。'},
+ {type:'イベント',title:'日本武道館 コンサート',place:'千代田区・北の丸公園',time:'20:30 終演予定',desc:'イベント一覧の表示確認用データです。'}
+];
+const types=['すべて','交通','イベント','鉄道']; let active='すべて';
+const list=document.getElementById('list'), tabs=document.getElementById('tabs');
+function renderTabs(){tabs.innerHTML='';types.forEach(t=>{const b=document.createElement('button');b.className='tab'+(t===active?' active':'');b.textContent=t;b.onclick=()=>{active=t;renderTabs();renderList()};tabs.appendChild(b)})}
+function renderList(){const data=active==='すべて'?items:items.filter(x=>x.type===active);list.innerHTML=data.length?'':'<div class="empty">表示する情報がありません</div>';data.forEach(x=>{const c=document.createElement('div');c.className='card';c.innerHTML=`<div class="row"><div><div class="badge">${x.type}</div><div class="title">${x.title}</div><div class="meta">${x.place}<br>${x.time}</div></div><div class="chev">›</div></div>`;c.onclick=()=>openDetail(x);list.appendChild(c)})}
+function openDetail(x){document.getElementById('detail').innerHTML=`<div class="badge">${x.type}</div><h2>${x.title}</h2><div class="meta">場所：${x.place}<br>時刻：${x.time}</div><p>${x.desc}</p><div class="map">地図表示エリア（次版で実地図接続）</div>`;document.getElementById('modal').classList.add('show')}
+document.getElementById('close').onclick=()=>document.getElementById('modal').classList.remove('show');document.getElementById('modal').onclick=e=>{if(e.target.id==='modal')e.currentTarget.classList.remove('show')}
+function tick(){document.getElementById('clock').textContent=new Intl.DateTimeFormat('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(new Date())}tick();setInterval(tick,1000);
+let deferredPrompt;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;document.getElementById('installBtn').style.display='block'});document.getElementById('installBtn').onclick=async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;document.getElementById('installBtn').style.display='none'};
+if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}))}
+renderTabs();renderList();
+</script>
+</body></html>

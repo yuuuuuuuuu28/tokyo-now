@@ -1,0 +1,10 @@
+{
+  "name":"東京NOW",
+  "short_name":"東京NOW",
+  "start_url":"./index.html",
+  "display":"standalone",
+  "background_color":"#f3f4f6",
+  "theme_color":"#111827",
+  "lang":"ja",
+  "description":"東京のイベント・交通・鉄道情報を一覧で確認するMVP"
+}
