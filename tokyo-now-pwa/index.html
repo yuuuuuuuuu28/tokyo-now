@@ -21,7 +21,7 @@
   </style>
 </head>
 <body>
-<header><div class="top"><div class="brand">東京NOW <span style="font-size:11px;opacity:.65">v0.03</span></div><div class="clock" id="clock"></div></div></header>
+<header><div class="top"><div class="brand">東京NOW <span style="font-size:11px;opacity:.65">v0.03.1</span></div><div class="clock" id="clock"></div></div></header>
 <div class="subhead"><div class="status"><span class="dot" id="dot"></span><span id="status">東京都APIに接続中…</span></div><button class="refresh" id="refresh">更新</button></div>
 <div class="tabs" id="tabs"></div>
 <main><div class="hero" id="hero"><strong>今日の東京</strong><small>東京都公式オープンデータAPIからイベント情報を取得して、今日・明日に該当するものを優先表示します。</small></div><div id="list" class="loading">イベント情報を取得しています…</div></main>
@@ -39,10 +39,10 @@ function deepValues(obj,key,out=[]){if(!obj||typeof obj!=='object')return out;if
 function stringsFrom(v,out=[]){if(v==null)return out;if(typeof v==='string'||typeof v==='number')out.push(String(v));else if(Array.isArray(v))v.forEach(x=>stringsFrom(x,out));else if(typeof v==='object')Object.values(v).forEach(x=>stringsFrom(x,out));return out}
 function firstMeaningful(vals){for(const v of vals){const ss=stringsFrom(v).map(s=>s.trim()).filter(Boolean);for(const s of ss){if(s.length>1&&!['名称型','住所型','場所型','イベント型','イベントスケジュール型'].includes(s))return s}}return ''}
 function extractTitle(o){const names=deepValues(o,'名称');for(const n of names){if(Array.isArray(n)){for(const x of n){if(x&&typeof x==='object'&&x['表記']&&String(x['表記']).trim())return String(x['表記']).trim()}}if(n&&typeof n==='object'&&n['表記'])return String(n['表記']).trim()}return firstMeaningful(deepValues(o,'表記'))||'名称未設定'}
-function extractDates(o){let arr=[];for(const k of ['開始日','終了日','開催日']) arr.push(...deepValues(o,k).flatMap(stringsFrom));return [...new Set(arr.filter(s=>/^20\d{2}-\d{2}-\d{2}/.test(s)).map(s=>s.slice(0,10)))]}
+function extractDates(o){let arr=[];for(const k of ['開始日','終了日','開催日']) arr.push(...deepValues(o,k).flatMap(v=>stringsFrom(v)));return [...new Set(arr.filter(s=>/^20\d{2}-\d{2}-\d{2}/.test(s)).map(s=>s.slice(0,10)))]}
 function extractPlace(o){const places=deepValues(o,'開催場所');for(const p of places){const cand=[...deepValues(p,'表記'),...deepValues(p,'住所')];const s=firstMeaningful(cand);if(s)return s}const addr=firstMeaningful(deepValues(o,'住所'));return addr||'場所情報なし'}
 function extractDesc(o){const d=firstMeaningful(deepValues(o,'説明'));return d||'説明情報なし'}
-function extractUrl(o){const vals=[...deepValues(o,'参照'),...deepValues(o,'URL'),...deepValues(o,'url')].flatMap(stringsFrom);return vals.find(s=>/^https?:\/\//.test(s))||''}
+function extractUrl(o){const vals=[...deepValues(o,'参照'),...deepValues(o,'URL'),...deepValues(o,'url')].flatMap(v=>stringsFrom(v));return vals.find(s=>/^https?:\/\//.test(s))||''}
 function normalize(o,i){const dates=extractDates(o);return {id:i,title:extractTitle(o),dates,place:extractPlace(o),desc:extractDesc(o),url:extractUrl(o),raw:o}}
 function renderTabs(){els.tabs.innerHTML='';tabs.forEach(t=>{const b=document.createElement('button');b.className='tab'+(t===active?' active':'');b.textContent=t;b.onclick=()=>{active=t;renderTabs();renderList()};els.tabs.appendChild(b)})}
 function renderList(){let data=allEvents;if(active==='今日・明日'){const a=today(),b=tomorrow();data=allEvents.filter(x=>x.dates.includes(a)||x.dates.includes(b))}
@@ -52,7 +52,7 @@ function renderList(){let data=allEvents;if(active==='今日・明日'){const a=
 }
 function escapeHtml(s){return String(s||'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]))}
 function openDetail(x){const coord=findCoords(x.raw);document.getElementById('detail').innerHTML=`<div class="badge">東京都公式API</div><h2>${escapeHtml(x.title)}</h2><div class="meta">場所：${escapeHtml(x.place)}<br>日付：${x.dates.length?escapeHtml(x.dates.join(' / ')):'情報なし'}</div><p>${escapeHtml(x.desc)}</p><div class="map">${coord?`位置情報あり<br>${coord.lat}, ${coord.lng}`:'地図表示は次版で接続'}</div>${x.url?`<a class="link" target="_blank" rel="noopener" href="${x.url}">参照元を開く</a>`:''}`;document.getElementById('modal').classList.add('show')}
-function findCoords(o){const lat=deepValues(o,'緯度').flatMap(stringsFrom).find(v=>!isNaN(parseFloat(v)));const lng=deepValues(o,'経度').flatMap(stringsFrom).find(v=>!isNaN(parseFloat(v)));return lat&&lng?{lat,lng}:null}
+function findCoords(o){const lat=deepValues(o,'緯度').flatMap(v=>stringsFrom(v)).find(v=>!isNaN(parseFloat(v)));const lng=deepValues(o,'経度').flatMap(v=>stringsFrom(v)).find(v=>!isNaN(parseFloat(v)));return lat&&lng?{lat,lng}:null}
 async function loadEvents(){els.status.textContent='東京都APIに接続中…';els.dot.className='dot';els.list.className='loading';els.list.textContent='イベント情報を取得しています…';const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),15000);try{const r=await fetch(API,{cache:'no-store',signal:controller.signal});if(!r.ok)throw new Error(`HTTP ${r.status}`);const json=await r.json();const rows=Array.isArray(json)?json:(json.items||json.data||[]);allEvents=rows.map(normalize);els.status.textContent=`東京都API 接続済み・${allEvents.length}件取得`;els.dot.className='dot ok';els.hero.innerHTML=`<strong>今日 ${today()}</strong><small>東京都公式Event APIから ${allEvents.length}件を取得。今日・明日の日付が明示されているイベントを優先表示しています。</small>`;renderList()}catch(e){console.error(e);els.status.textContent='東京都APIの取得に失敗';els.dot.className='dot err';els.list.className='';els.list.innerHTML='<div class="empty"><b>データ取得に失敗しました。</b><br>通信状態を確認して「更新」を押してください。<div class="note">エラー: '+escapeHtml(e.message)+'</div></div>'}finally{clearTimeout(timer)}}
 document.getElementById('refresh').onclick=loadEvents;document.getElementById('close').onclick=()=>document.getElementById('modal').classList.remove('show');document.getElementById('modal').onclick=e=>{if(e.target.id==='modal')e.currentTarget.classList.remove('show')};
 function tick(){document.getElementById('clock').textContent=new Intl.DateTimeFormat('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(new Date())}tick();setInterval(tick,1000);
