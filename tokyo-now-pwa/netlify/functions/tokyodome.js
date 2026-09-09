@@ -102,7 +102,7 @@ function parseSchedule(html) {
 exports.handler = async function(){
   try {
     const r = await fetch(SOURCE_URL, {headers:{
-      'User-Agent':'Mozilla/5.0 (compatible; TokyoNOW/0.05.2; +https://netlify.app)',
+      'User-Agent':'Mozilla/5.0 (compatible; TokyoNOW/0.06.0; +https://netlify.app)',
       'Accept':'text/html,application/xhtml+xml',
       'Accept-Language':'ja,en;q=0.8'
     }});
