@@ -26,7 +26,7 @@
 <script>
 const TOKYO_API='https://api.data.metro.tokyo.lg.jp/v1/Event';
 const BIGSIGHT_CSV='/.netlify/functions/bigsight';
-const TOKYODOME_HTML='/.netlify/functions/tokyodome';
+const TOKYODOME_API='/.netlify/functions/tokyodome';
 const tabs=['本日','今月','取得データ','重要度設定']; let active='本日'; let allEvents=[]; let sourceState={tokyo:{status:'wait',count:0,error:''},bigsight:{status:'wait',count:0,error:''},dome:{status:'wait',count:0,error:''}};
 const els={list:document.getElementById('list'),tabs:document.getElementById('tabs'),status:document.getElementById('status'),dot:document.getElementById('dot'),hero:document.getElementById('hero')};
 const pad=n=>String(n).padStart(2,'0'); const ymd=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; const today=()=>ymd(new Date());
@@ -51,33 +51,17 @@ function daysBetween(a,b){if(!a)return 1;const x=new Date(a+'T00:00:00'),y=new D
 function importanceFactors(x){const d=daysBetween(x.startDate,x.endDate);return {venueScale:x.place==='東京ドーム'?5:x.place.includes('東京ビッグサイト')?4:1,duration:d===1?5:d<=3?4:d<=7?3:d<=14?2:1,eventType:/コンサート|ライブ|野球|スポーツ|展示会|総合展|フェス/i.test((x.category||'')+' '+x.title)?5:3,timing:x.startTime&&parseInt(x.startTime)>=17?5:3,attendance:x.attendanceScore||0,confidence:x.source.includes('公式')||x.source.includes('オープンデータ')?5:3}}
 function importanceScore(x){const f=importanceFactors(x);let sum=0,max=0;for(const [k,w] of Object.entries(importanceWeights)){if(f[k]>0){sum+=f[k]*w;max+=5*w}}return max?Math.round(sum/max*100):0}
 function importanceLabel(x){const n=importanceScore(x);return n>=80?'🔥 大規模':n>=60?'● 注目':n>=40?'注目候補':'通常'}
-function normalizeTokyoDome(html){
-  const doc=new DOMParser().parseFromString(html,'text/html');
-  const body=(doc.body?.innerText||doc.body?.textContent||'').replace(/\r/g,'');
-  const lines=body.split(/\n+/).map(x=>x.replace(/[\t ]+/g,' ').trim()).filter(Boolean);
-  const out=[];let year=null,month=null;
-  const ignore=/^(TOKYO DOME TOUR|お問い合わせ|新規入会|ログイン|チケプラ|ローチケ|DISK ?GARAGE|キョードー|TEL[:：]|平日 |土日祝 |〖|（営業時間)/i;
-  for(let i=0;i<lines.length;i++){
-    const line=lines[i];
-    const ym=line.match(/^(20\d{2})年(\d{1,2})月$/);if(ym){year=+ym[1];month=+ym[2];continue}
-    if(!year||!month)continue;
-    const dm=line.match(/^(\d{1,2})\s*[（(][^）)]*[）)]\s*(?:\||｜)?\s*(.*)$/);if(!dm)continue;
-    const day=+dm[1];let rest=(dm[2]||'').trim();
-    if(!rest){const nxt=lines[i+1]||'';if(!/^(\d{1,2})\s*[（(]/.test(nxt)&&!/^20\d{2}年\d{1,2}月$/.test(nxt))rest=nxt}
-    if(!rest)continue;
-    rest=rest.replace(/TOKYO DOME TOUR/g,' ').replace(/\s+/g,' ').trim();
-    const category=(rest.match(/^(野球|コンサート|スポーツ|イベント)\s+/)||[])[1]||'';
-    rest=rest.replace(/^(野球|コンサート|スポーツ|イベント)\s+/,'');
-    rest=rest.replace(/^(野球|コンサート|スポーツ|イベント)\s+/,'');
-    const title=rest.split(/\s+(?:開場|開始|開演)\s*\d{1,2}:\d{2}|\s*<お問い合わせ>|\s*お問い合わせ/)[0].trim();
-    if(!title||ignore.test(title))continue;
-    const open=(rest.match(/開場\s*(\d{1,2}:\d{2})/)||[])[1]||'';
-    const start=(rest.match(/(?:開始|開演)\s*(\d{1,2}:\d{2})/)||[])[1]||'';
-    const date=`${year}-${pad(month)}-${pad(day)}`;
-    out.push({id:`dome-${date}-${out.length}`,title,startDate:date,endDate:date,startTime:start,openTime:open,place:'東京ドーム',area:'文京区後楽',category,desc:[open&&`開場 ${open}`,start&&`${category==='コンサート'||category==='イベント'?'開演':'開始'} ${start}`].filter(Boolean).join('／')||'東京ドーム公式スケジュール掲載イベント',url:'https://www.tokyo-dome.co.jp/dome/event/schedule.html',source:'東京ドーム公式',sourceUpdated:today(),attendanceScore:0,raw:{text:line}})
-  }
-  const seen=new Set();return out.filter(x=>{const k=x.startDate+'|'+x.title;if(seen.has(k))return false;seen.add(k);return true})
+function normalizeTokyoDomePayload(payload){
+  const rows=Array.isArray(payload)?payload:(payload?.events||[]);
+  return rows.map((x,i)=>({
+    id:x.id||`dome-${x.startDate||'unknown'}-${i}`,title:x.title||'東京ドームイベント',
+    startDate:x.startDate||'',endDate:x.endDate||x.startDate||'',startTime:x.startTime||'',openTime:x.openTime||'',
+    place:x.place||'東京ドーム',area:x.area||'文京区後楽',category:x.category||'',desc:x.desc||'東京ドーム公式スケジュール掲載イベント',
+    url:x.url||'https://www.tokyo-dome.co.jp/dome/event/schedule.html',source:x.source||'東京ドーム公式',
+    sourceUpdated:x.sourceUpdated||today(),attendanceScore:x.attendanceScore||0,raw:x.raw||x
+  })).filter(x=>x.startDate&&x.title)
 }
+
 function dataForActive(){if(active==='取得データ')return allEvents.slice();const s=today(),e=active==='本日'?s:endOfMonth();return allEvents.filter(x=>overlaps(x,s,e)).sort((a,b)=>(a.startDate||'9999').localeCompare(b.startDate||'9999')||importanceScore(b)-importanceScore(a))}
 function renderTabs(){els.tabs.innerHTML='';tabs.forEach(t=>{const b=document.createElement('button');b.className='tab'+(t===active?' active':'');b.textContent=t;b.onclick=()=>{active=t;renderTabs();renderHero();renderList()};els.tabs.appendChild(b)})}
 function sourceBadge(label,state){const mark=state.status==='ok'?'🟢':state.status==='empty'?'🟡':state.status==='err'?'🔴':'⚪';const detail=state.status==='err'?`取得失敗${state.error?` (${state.error})`:''}`:`${state.count}件`;return `<span class="sourcePill">${mark} ${label} ${escapeHtml(detail)}</span>`}
@@ -87,7 +71,7 @@ function formatRange(x){if(!x.startDate)return'日付情報なし';return x.endD
 function escapeHtml(s){return String(s||'').replace(/[&<>\"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[m]||m))}
 function openDetail(x){document.getElementById('detail').innerHTML=`<div class="badge">${escapeHtml(x.source)}</div><h2>${escapeHtml(x.title)}</h2><div class="meta">場所：${escapeHtml(x.place)}<br>期間：${escapeHtml(formatRange(x))}${x.area?`<br>エリア：${escapeHtml(x.area)}`:''}${x.sourceUpdated?`<br>データ更新：${escapeHtml(x.sourceUpdated)}`:''}</div><p>${escapeHtml(x.desc)}</p><div class="map">地図連携は次段階で実装</div>${x.url&&/^https?:\/\//.test(x.url)?`<a class="link" target="_blank" rel="noopener" href="${x.url}">参照元を開く</a>`:''}`;document.getElementById('modal').classList.add('show')}
 function renderImportanceSettings(){els.list.className='';const labels={venueScale:'会場規模',duration:'開催日数',eventType:'イベント種別',timing:'開催・終了時間',attendance:'来場規模（取得できる場合）',confidence:'情報の確度'};els.list.innerHTML=`<div class="hero"><strong>重要度カスタマイズ</strong><small>各項目をどれだけ重視するか設定します。0=無視、5=最重視。評価項目は今後追加できる構造です。</small>${Object.entries(labels).map(([k,l])=>`<div style="margin-top:14px"><b>${l}</b><div style="display:flex;gap:10px;align-items:center"><input style="flex:1" type="range" min="0" max="5" value="${importanceWeights[k]}" data-weight="${k}"><span id="w-${k}">${importanceWeights[k]}</span></div></div>`).join('')}<button class="refresh" id="resetWeights" style="margin-top:18px">標準設定に戻す</button></div>`;document.querySelectorAll('[data-weight]').forEach(el=>el.oninput=()=>{importanceWeights[el.dataset.weight]=+el.value;document.getElementById('w-'+el.dataset.weight).textContent=el.value;localStorage.setItem('tokyonow-importance',JSON.stringify(importanceWeights))});document.getElementById('resetWeights').onclick=()=>{importanceWeights={...DEFAULT_WEIGHTS};localStorage.setItem('tokyonow-importance',JSON.stringify(importanceWeights));renderImportanceSettings()}}
-async function fetchTokyoDome(){try{const r=await fetch(TOKYODOME_HTML,{cache:'no-store'});if(!r.ok)throw Error(`HTTP ${r.status}`);const html=await r.text();const items=normalizeTokyoDome(html);sourceState.dome={status:items.length?'ok':'empty',count:items.length,error:''};return items}catch(e){console.warn('Tokyo Dome',e);sourceState.dome={status:'err',count:0,error:e.message||'接続エラー'};return[]}}
+async function fetchTokyoDome(){try{const r=await fetch(TOKYODOME_API,{cache:'no-store'});let j=null;try{j=await r.json()}catch{}if(!r.ok)throw Error(j?.error||`HTTP ${r.status}`);const items=normalizeTokyoDomePayload(j);sourceState.dome={status:items.length?'ok':'empty',count:items.length,error:items.length?'':'解析0件'};return items}catch(e){console.warn('Tokyo Dome',e);sourceState.dome={status:'err',count:0,error:e.message||'接続エラー'};return[]}}
 async function fetchTokyo(){try{const r=await fetch(TOKYO_API,{cache:'no-store'});if(!r.ok)throw Error(`HTTP ${r.status}`);const j=await r.json();const rows=Array.isArray(j)?j:(j.items||j.data||[]);const items=rows.map(normalizeTokyo);sourceState.tokyo={status:items.length?'ok':'empty',count:items.length,error:''};return items}catch(e){console.warn('Tokyo API',e);sourceState.tokyo={status:'err',count:0,error:e.message||'接続エラー'};return[]}}
 async function fetchBigSight(){try{const r=await fetch(BIGSIGHT_CSV,{cache:'no-store'});if(!r.ok){let msg=`HTTP ${r.status}`;try{const j=await r.json();if(j.error)msg=j.error}catch{}throw Error(msg)}const text=await r.text();const items=normalizeBigSight(text);sourceState.bigsight={status:items.length?'ok':'empty',count:items.length,error:''};return items}catch(e){console.warn('BigSight CSV',e);sourceState.bigsight={status:'err',count:0,error:e.message||'接続エラー'};return[]}}
 async function loadEvents(){els.status.textContent='イベント情報を取得中…';els.dot.className='dot';els.list.className='loading';els.list.textContent='イベント情報を取得しています…';sourceState={tokyo:{status:'wait',count:0,error:''},bigsight:{status:'wait',count:0,error:''},dome:{status:'wait',count:0,error:''}};const [b,d,t]=await Promise.all([fetchBigSight(),fetchTokyoDome(),fetchTokyo()]);allEvents=[...b,...d,...t];const states=[sourceState.bigsight,sourceState.dome,sourceState.tokyo];const ok=states.filter(x=>x.status==='ok'||x.status==='empty').length;const err=states.filter(x=>x.status==='err').length;els.status.textContent=err===0?`3情報源 接続済み・${allEvents.length}件取得`:`${ok}情報源 接続済み・${allEvents.length}件取得`;els.dot.className=err===0?'dot ok':ok===1?'dot warn':'dot err';renderHero();renderList()}
