@@ -13,11 +13,12 @@
     .tabs{display:flex;gap:8px;overflow:auto;padding:10px 12px 6px;background:#fff;border-bottom:1px solid #e5e7eb}.tab{border:0;border-radius:999px;padding:9px 13px;background:#e5e7eb;white-space:nowrap;font-weight:800}.tab.active{background:#111827;color:#fff}
     main{padding:10px 12px 84px}.hero{background:#fff;border-radius:16px;padding:14px;margin:10px 0;border:1px solid #e5e7eb}.hero strong{font-size:20px}.hero small{display:block;margin-top:6px;color:#6b7280;line-height:1.5}.sourceLine{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.sourcePill{font-size:11px;border-radius:999px;padding:5px 8px;background:#f3f4f6;color:#4b5563;font-weight:800}
     .card{background:#fff;border-radius:16px;padding:14px;margin:10px 0;box-shadow:0 2px 10px rgba(0,0,0,.06);border:1px solid #eef0f2}.badge{display:inline-block;padding:4px 8px;border-radius:999px;font-size:12px;font-weight:900;background:#e5e7eb;margin:0 6px 8px 0}.badge.today{background:#dcfce7;color:#166534}.badge.month{background:#dbeafe;color:#1d4ed8}.badge.high{background:#fee2e2;color:#991b1b}.title{font-size:17px;font-weight:900;margin-bottom:6px;line-height:1.35}.meta{font-size:14px;color:#4b5563;line-height:1.6}.row{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.chev{font-size:24px;color:#9ca3af}.empty{text-align:center;color:#6b7280;padding:34px 18px;line-height:1.7;background:#fff;border-radius:16px;margin-top:10px}.loading{text-align:center;padding:38px;color:#6b7280}.note{font-size:12px;color:#6b7280;line-height:1.55;margin-top:12px}
+    .groupBadge{background:#ede9fe;color:#6d28d9}.relatedBox{margin-top:18px;padding-top:16px;border-top:1px solid #e5e7eb}.relatedItem{padding:12px 0;border-bottom:1px solid #eef0f2}.relatedItem:last-child{border-bottom:0}.relatedTitle{font-weight:900;line-height:1.4}.relatedMeta{font-size:13px;color:#6b7280;line-height:1.55;margin-top:4px}.mapLink{display:inline-block;margin-top:12px;padding:10px 12px;background:#e0f2fe;color:#075985;border-radius:10px;font-weight:900;text-decoration:none}.groupInfo{font-size:12px;color:#6d28d9;font-weight:800;margin-top:6px}
     .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;z-index:20}.modal.show{display:flex}.sheet{background:#fff;width:100%;border-radius:22px 22px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));max-height:84vh;overflow:auto}.close{float:right;border:0;background:#e5e7eb;border-radius:999px;width:36px;height:36px;font-size:18px}.map{height:160px;border-radius:14px;background:linear-gradient(135deg,#dbeafe,#e5e7eb);display:grid;place-items:center;margin-top:12px;font-weight:800;color:#374151;text-align:center;padding:12px}.link{display:inline-block;margin-top:12px;color:#0369a1;font-weight:800;text-decoration:none}.install{position:fixed;left:12px;right:12px;bottom:12px;background:#111827;color:#fff;border:0;border-radius:14px;padding:14px;font-weight:800;display:none;z-index:10}
   </style>
 </head>
 <body>
-<header><div class="top"><div class="brand">東京NOW <span style="font-size:11px;opacity:.65">v0.05.3</span></div><div class="clock" id="clock"></div></div></header>
+<header><div class="top"><div class="brand">東京NOW <span style="font-size:11px;opacity:.65">v0.06.0</span></div><div class="clock" id="clock"></div></div></header>
 <div class="subhead"><div class="status"><span class="dot" id="dot"></span><span id="status">イベント情報を取得中…</span></div><button class="refresh" id="refresh">更新</button></div>
 <div class="tabs" id="tabs"></div>
 <main><div class="hero" id="hero"></div><div id="list" class="loading">イベント情報を取得しています…</div></main>
@@ -27,7 +28,7 @@
 const TOKYO_API='https://api.data.metro.tokyo.lg.jp/v1/Event';
 const BIGSIGHT_CSV='/.netlify/functions/bigsight';
 const TOKYODOME_API='/.netlify/functions/tokyodome';
-const tabs=['本日','今月','取得データ','重要度設定']; let active='本日'; let allEvents=[]; let sourceState={tokyo:{status:'wait',count:0,error:''},bigsight:{status:'wait',count:0,error:''},dome:{status:'wait',count:0,error:''}};
+const tabs=['本日','今月','取得データ','重要度設定']; let active='本日'; let rawEvents=[]; let allEvents=[]; let sourceState={tokyo:{status:'wait',count:0,error:''},bigsight:{status:'wait',count:0,error:''},dome:{status:'wait',count:0,error:''}};
 const els={list:document.getElementById('list'),tabs:document.getElementById('tabs'),status:document.getElementById('status'),dot:document.getElementById('dot'),hero:document.getElementById('hero')};
 const pad=n=>String(n).padStart(2,'0'); const ymd=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; const today=()=>ymd(new Date());
 function endOfMonth(){const d=new Date();return ymd(new Date(d.getFullYear(),d.getMonth()+1,0))}
@@ -49,7 +50,8 @@ const DEFAULT_WEIGHTS={venueScale:3,duration:2,eventType:2,timing:1,attendance:3
 let importanceWeights=(()=>{try{return {...DEFAULT_WEIGHTS,...JSON.parse(localStorage.getItem('tokyonow-importance')||'{}')}}catch{return {...DEFAULT_WEIGHTS}}})();
 function daysBetween(a,b){if(!a)return 1;const x=new Date(a+'T00:00:00'),y=new Date((b||a)+'T00:00:00');return Math.max(1,Math.round((y-x)/86400000)+1)}
 function importanceFactors(x){const d=daysBetween(x.startDate,x.endDate);return {venueScale:x.place==='東京ドーム'?5:x.place.includes('東京ビッグサイト')?4:1,duration:d===1?5:d<=3?4:d<=7?3:d<=14?2:1,eventType:/コンサート|ライブ|野球|スポーツ|展示会|総合展|フェス/i.test((x.category||'')+' '+x.title)?5:3,timing:x.startTime&&parseInt(x.startTime)>=17?5:3,attendance:x.attendanceScore||0,confidence:x.source.includes('公式')||x.source.includes('オープンデータ')?5:3}}
-function importanceScore(x){const f=importanceFactors(x);let sum=0,max=0;for(const [k,w] of Object.entries(importanceWeights)){if(f[k]>0){sum+=f[k]*w;max+=5*w}}return max?Math.round(sum/max*100):0}
+function importanceScoreSingle(x){const f=importanceFactors(x);let sum=0,max=0;for(const [k,w] of Object.entries(importanceWeights)){if(f[k]>0){sum+=f[k]*w;max+=5*w}}return max?Math.round(sum/max*100):0}
+function importanceScore(x){return Math.max(...[x,...(x.relatedEvents||[])].map(importanceScoreSingle))}
 function importanceLabel(x){const n=importanceScore(x);return n>=80?'🔥 大規模':n>=60?'● 注目':n>=40?'注目候補':'通常'}
 function normalizeTokyoDomePayload(payload){
   const rows=Array.isArray(payload)?payload:(payload?.events||[]);
@@ -62,6 +64,72 @@ function normalizeTokyoDomePayload(payload){
   })).filter(x=>x.startDate&&x.title)
 }
 
+function normalizeTitleForGroup(title){
+  return String(title||'')
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[「」『』【】()（）\[\]［］・･,，.。:：;；!！?？'\"“”‘’\-–—_／/\\|｜\s]/g,'')
+    .replace(/第\s*\d+\s*回/g,'')
+    .replace(/vol\.?\s*\d+/gi,'')
+    .replace(/part\s*\d+/gi,'')
+    .trim();
+}
+function venueFamily(place){
+  const s=String(place||'').normalize('NFKC');
+  if(s.includes('東京ビッグサイト'))return '東京ビッグサイト';
+  if(s.includes('東京ドーム'))return '東京ドーム';
+  return s.replace(/[\s　]/g,'').replace(/ホール|展示棟|展示場|会議棟/g,'');
+}
+function rangeOverlap(a,b){
+  if(!a.startDate||!b.startDate)return false;
+  const as=a.startDate,ae=a.endDate||a.startDate,bs=b.startDate,be=b.endDate||b.startDate;
+  return as<=be&&bs<=ae;
+}
+function bigrams(s){const out=new Set();for(let i=0;i<s.length-1;i++)out.add(s.slice(i,i+2));return out}
+function titleSimilarity(a,b){
+  const x=normalizeTitleForGroup(a),y=normalizeTitleForGroup(b);
+  if(!x||!y)return 0;
+  if(x===y)return 1;
+  const shorter=x.length<=y.length?x:y,longer=x.length<=y.length?y:x;
+  if(shorter.length>=8&&longer.includes(shorter))return Math.min(0.99,0.82+0.17*(shorter.length/longer.length));
+  if(shorter.length<6)return 0;
+  const A=bigrams(x),B=bigrams(y);let hit=0;A.forEach(v=>{if(B.has(v))hit++});
+  const union=new Set([...A,...B]).size;
+  return union?hit/union:0;
+}
+function areRelatedEvents(a,b){
+  if(venueFamily(a.place)!==venueFamily(b.place))return false;
+  if(!rangeOverlap(a,b))return false;
+  const sim=titleSimilarity(a.title,b.title);
+  if(sim>=0.72)return true;
+  const x=normalizeTitleForGroup(a.title),y=normalizeTitleForGroup(b.title);
+  const shorter=x.length<=y.length?x:y,longer=x.length<=y.length?y:x;
+  return shorter.length>=10&&longer.includes(shorter);
+}
+function pickMainEvent(group){
+  return group.slice().sort((a,b)=>{
+    const ac=normalizeTitleForGroup(a.title),bc=normalizeTitleForGroup(b.title);
+    const aContained=group.filter(x=>normalizeTitleForGroup(x.title)!==ac&&normalizeTitleForGroup(x.title).includes(ac)).length;
+    const bContained=group.filter(x=>normalizeTitleForGroup(x.title)!==bc&&normalizeTitleForGroup(x.title).includes(bc)).length;
+    if(bContained!==aContained)return bContained-aContained;
+    if(ac.length!==bc.length)return ac.length-bc.length;
+    return String(a.title).length-String(b.title).length;
+  })[0];
+}
+function groupRelatedEvents(events){
+  const n=events.length,parent=Array.from({length:n},(_,i)=>i);
+  const find=i=>{while(parent[i]!==i){parent[i]=parent[parent[i]];i=parent[i]}return i};
+  const unite=(a,b)=>{a=find(a);b=find(b);if(a!==b)parent[b]=a};
+  for(let i=0;i<n;i++)for(let j=i+1;j<n;j++)if(areRelatedEvents(events[i],events[j]))unite(i,j);
+  const groups=new Map();
+  events.forEach((e,i)=>{const r=find(i);if(!groups.has(r))groups.set(r,[]);groups.get(r).push(e)});
+  return [...groups.values()].map(group=>{
+    const main=pickMainEvent(group);
+    const related=group.filter(x=>x!==main).sort((a,b)=>(a.startDate||'').localeCompare(b.startDate||'')||a.title.localeCompare(b.title,'ja'));
+    return {...main,relatedEvents:related,groupSize:group.length};
+  });
+}
+
 function overlaps(event, start, end){
   if(!event.startDate) return false;
   const eventStart = event.startDate;
@@ -72,15 +140,21 @@ function overlaps(event, start, end){
 function dataForActive(){if(active==='取得データ')return allEvents.slice();const s=today(),e=active==='本日'?s:endOfMonth();return allEvents.filter(x=>overlaps(x,s,e)).sort((a,b)=>(a.startDate||'9999').localeCompare(b.startDate||'9999')||importanceScore(b)-importanceScore(a))}
 function renderTabs(){els.tabs.innerHTML='';tabs.forEach(t=>{const b=document.createElement('button');b.className='tab'+(t===active?' active':'');b.textContent=t;b.onclick=()=>{active=t;renderTabs();renderHero();renderList()};els.tabs.appendChild(b)})}
 function sourceBadge(label,state){const mark=state.status==='ok'?'🟢':state.status==='empty'?'🟡':state.status==='err'?'🔴':'⚪';const detail=state.status==='err'?`取得失敗${state.error?` (${state.error})`:''}`:`${state.count}件`;return `<span class="sourcePill">${mark} ${label} ${escapeHtml(detail)}</span>`}
-function renderHero(){const range=active==='本日'?today():active==='今月'?`${today()}〜${endOfMonth()}`:active==='取得データ'?'全取得データ':'ユーザー設定';els.hero.innerHTML=`<strong>${active==='本日'?'本日のイベント':active==='今月'?'今月のこれから':active==='取得データ'?'取得データ':'重要度設定'}</strong><small>対象期間：${range}<br>過去イベントは「本日」「今月」には表示しません。将来の期間指定に対応できる期間フィルター方式です。</small><div class="sourceLine">${sourceBadge('東京ビッグサイト',sourceState.bigsight)}${sourceBadge('東京ドーム',sourceState.dome)}${sourceBadge('東京都Event API',sourceState.tokyo)}</div>`}
-function renderList(){if(active==='重要度設定'){renderImportanceSettings();return}const data=dataForActive();els.list.className='';els.list.innerHTML='';if(!data.length){els.list.innerHTML=`<div class="empty"><b>${active==='本日'?'本日の':active==='今月'?'今月これからの':'表示可能な'}イベントは見つかりませんでした</b><br><br>データ取得状況は上部の件数で確認できます。</div>`;return}data.slice(0,120).forEach(x=>{const c=document.createElement('div');c.className='card';const isToday=overlaps(x,today(),today());const futureMonth=overlaps(x,today(),endOfMonth());const badge=active==='取得データ'?(isToday?'<div class="badge today">本日</div>':futureMonth?'<div class="badge month">今月</div>':'<div class="badge">取得データ</div>'):`<div class="badge ${isToday?'today':'month'}">${isToday?'本日':'今月'}</div>`;c.innerHTML=`<div class="row"><div>${badge}<div class="badge high">${importanceLabel(x)} ${importanceScore(x)}</div><div class="title">${escapeHtml(x.title)}</div><div class="meta">${escapeHtml(x.place||'場所情報なし')}<br>${formatRange(x)}<br>情報元：${escapeHtml(x.source)}</div></div><div class="chev">›</div></div>`;c.onclick=()=>openDetail(x);els.list.appendChild(c)})}
+function renderHero(){const range=active==='本日'?today():active==='今月'?`${today()}〜${endOfMonth()}`:active==='取得データ'?'全取得データ':'ユーザー設定';const grouped=rawEvents.length&&allEvents.length<rawEvents.length?`<br>${rawEvents.length}件の取得データを、親イベント＋サブイベント構造で${allEvents.length}件に整理しています。`:'';els.hero.innerHTML=`<strong>${active==='本日'?'本日のイベント':active==='今月'?'今月のこれから':active==='取得データ'?'取得データ':'重要度設定'}</strong><small>対象期間：${range}<br>過去イベントは「本日」「今月」には表示しません。将来の期間指定に対応できる期間フィルター方式です。${grouped}</small><div class="sourceLine">${sourceBadge('東京ビッグサイト',sourceState.bigsight)}${sourceBadge('東京ドーム',sourceState.dome)}${sourceBadge('東京都Event API',sourceState.tokyo)}</div>`}
+function renderList(){if(active==='重要度設定'){renderImportanceSettings();return}const data=dataForActive();els.list.className='';els.list.innerHTML='';if(!data.length){els.list.innerHTML=`<div class="empty"><b>${active==='本日'?'本日の':active==='今月'?'今月これからの':'表示可能な'}イベントは見つかりませんでした</b><br><br>データ取得状況は上部の件数で確認できます。</div>`;return}data.slice(0,120).forEach(x=>{const c=document.createElement('div');c.className='card';const isToday=overlaps(x,today(),today());const futureMonth=overlaps(x,today(),endOfMonth());const badge=active==='取得データ'?(isToday?'<div class="badge today">本日</div>':futureMonth?'<div class="badge month">今月</div>':'<div class="badge">取得データ</div>'):`<div class="badge ${isToday?'today':'month'}">${isToday?'本日':'今月'}</div>`;const groupBadge=x.relatedEvents?.length?`<div class="badge groupBadge">＋${x.relatedEvents.length} サブイベント</div>`:'';c.innerHTML=`<div class="row"><div>${badge}<div class="badge high">${importanceLabel(x)} ${importanceScore(x)}</div>${groupBadge}<div class="title">${escapeHtml(x.title)}</div>${x.relatedEvents?.length?`<div class="groupInfo">関連タイトルは詳細で確認できます</div>`:''}<div class="meta">${escapeHtml(x.place||'場所情報なし')}<br>${formatRange(x)}<br>情報元：${escapeHtml(x.source)}</div></div><div class="chev">›</div></div>`;c.onclick=()=>openDetail(x);els.list.appendChild(c)})}
 function formatRange(x){if(!x.startDate)return'日付情報なし';return x.endDate&&x.endDate!==x.startDate?`${x.startDate} ～ ${x.endDate}`:x.startDate}
 function escapeHtml(s){return String(s||'').replace(/[&<>\"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[m]||m))}
-function openDetail(x){document.getElementById('detail').innerHTML=`<div class="badge">${escapeHtml(x.source)}</div><h2>${escapeHtml(x.title)}</h2><div class="meta">場所：${escapeHtml(x.place)}<br>期間：${escapeHtml(formatRange(x))}${x.area?`<br>エリア：${escapeHtml(x.area)}`:''}${x.sourceUpdated?`<br>データ更新：${escapeHtml(x.sourceUpdated)}`:''}</div><p>${escapeHtml(x.desc)}</p><div class="map">地図連携は次段階で実装</div>${x.url&&/^https?:\/\//.test(x.url)?`<a class="link" target="_blank" rel="noopener" href="${x.url}">参照元を開く</a>`:''}`;document.getElementById('modal').classList.add('show')}
+function openDetail(x){
+  const mapUrl=`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(x.place||x.title)}`;
+  const related=x.relatedEvents||[];
+  const relatedHtml=related.length?`<div class="relatedBox"><h3>このイベント内のサブタイトル・関連イベント（${related.length}件）</h3><div class="note">一覧ではメインイベントだけを表示し、同じ会場・開催期間・タイトル系列のイベントをここにまとめています。</div>${related.map(r=>`<div class="relatedItem"><div class="relatedTitle">${escapeHtml(r.title)}</div><div class="relatedMeta">${escapeHtml(r.place||x.place)}<br>${escapeHtml(formatRange(r))}<br>情報元：${escapeHtml(r.source)}</div>${r.url&&/^https?:\/\//.test(r.url)?`<a class="link" target="_blank" rel="noopener" href="${r.url}">このサブイベントの参照元</a>`:''}</div>`).join('')}</div>`:'';
+  document.getElementById('detail').innerHTML=`<div class="badge">${escapeHtml(x.source)}</div>${related.length?`<div class="badge groupBadge">親イベント＋${related.length}サブイベント</div>`:''}<h2>${escapeHtml(x.title)}</h2><div class="meta">場所：${escapeHtml(x.place)}<br>期間：${escapeHtml(formatRange(x))}${x.area?`<br>エリア：${escapeHtml(x.area)}`:''}${x.sourceUpdated?`<br>データ更新：${escapeHtml(x.sourceUpdated)}`:''}<br>重要度：${importanceLabel(x)} ${importanceScore(x)}</div><p>${escapeHtml(x.desc)}</p><a class="mapLink" target="_blank" rel="noopener" href="${mapUrl}">Googleマップで会場を見る</a>${x.url&&/^https?:\/\//.test(x.url)?`<br><a class="link" target="_blank" rel="noopener" href="${x.url}">メインイベントの参照元を開く</a>`:''}${relatedHtml}`;
+  document.getElementById('modal').classList.add('show');
+}
 function renderImportanceSettings(){els.list.className='';const labels={venueScale:'会場規模',duration:'開催日数',eventType:'イベント種別',timing:'開催・終了時間',attendance:'来場規模（取得できる場合）',confidence:'情報の確度'};els.list.innerHTML=`<div class="hero"><strong>重要度カスタマイズ</strong><small>各項目をどれだけ重視するか設定します。0=無視、5=最重視。評価項目は今後追加できる構造です。</small>${Object.entries(labels).map(([k,l])=>`<div style="margin-top:14px"><b>${l}</b><div style="display:flex;gap:10px;align-items:center"><input style="flex:1" type="range" min="0" max="5" value="${importanceWeights[k]}" data-weight="${k}"><span id="w-${k}">${importanceWeights[k]}</span></div></div>`).join('')}<button class="refresh" id="resetWeights" style="margin-top:18px">標準設定に戻す</button></div>`;document.querySelectorAll('[data-weight]').forEach(el=>el.oninput=()=>{importanceWeights[el.dataset.weight]=+el.value;document.getElementById('w-'+el.dataset.weight).textContent=el.value;localStorage.setItem('tokyonow-importance',JSON.stringify(importanceWeights))});document.getElementById('resetWeights').onclick=()=>{importanceWeights={...DEFAULT_WEIGHTS};localStorage.setItem('tokyonow-importance',JSON.stringify(importanceWeights));renderImportanceSettings()}}
 async function fetchTokyoDome(){try{const r=await fetch(TOKYODOME_API,{cache:'no-store'});let j=null;try{j=await r.json()}catch{}if(!r.ok)throw Error(j?.error||`HTTP ${r.status}`);const items=normalizeTokyoDomePayload(j);sourceState.dome={status:items.length?'ok':'empty',count:items.length,error:items.length?'':'解析0件'};return items}catch(e){console.warn('Tokyo Dome',e);sourceState.dome={status:'err',count:0,error:e.message||'接続エラー'};return[]}}
 async function fetchTokyo(){try{const r=await fetch(TOKYO_API,{cache:'no-store'});if(!r.ok)throw Error(`HTTP ${r.status}`);const j=await r.json();const rows=Array.isArray(j)?j:(j.items||j.data||[]);const items=rows.map(normalizeTokyo);sourceState.tokyo={status:items.length?'ok':'empty',count:items.length,error:''};return items}catch(e){console.warn('Tokyo API',e);sourceState.tokyo={status:'err',count:0,error:e.message||'接続エラー'};return[]}}
 async function fetchBigSight(){try{const r=await fetch(BIGSIGHT_CSV,{cache:'no-store'});if(!r.ok){let msg=`HTTP ${r.status}`;try{const j=await r.json();if(j.error)msg=j.error}catch{}throw Error(msg)}const text=await r.text();const items=normalizeBigSight(text);sourceState.bigsight={status:items.length?'ok':'empty',count:items.length,error:''};return items}catch(e){console.warn('BigSight CSV',e);sourceState.bigsight={status:'err',count:0,error:e.message||'接続エラー'};return[]}}
-async function loadEvents(){els.status.textContent='イベント情報を取得中…';els.dot.className='dot';els.list.className='loading';els.list.textContent='イベント情報を取得しています…';sourceState={tokyo:{status:'wait',count:0,error:''},bigsight:{status:'wait',count:0,error:''},dome:{status:'wait',count:0,error:''}};const [b,d,t]=await Promise.all([fetchBigSight(),fetchTokyoDome(),fetchTokyo()]);allEvents=[...b,...d,...t];const states=[sourceState.bigsight,sourceState.dome,sourceState.tokyo];const ok=states.filter(x=>x.status==='ok'||x.status==='empty').length;const err=states.filter(x=>x.status==='err').length;els.status.textContent=err===0?`3情報源 接続済み・${allEvents.length}件取得`:`${ok}情報源 接続済み・${allEvents.length}件取得`;els.dot.className=err===0?'dot ok':ok===1?'dot warn':'dot err';renderHero();renderList()}
+async function loadEvents(){els.status.textContent='イベント情報を取得中…';els.dot.className='dot';els.list.className='loading';els.list.textContent='イベント情報を取得しています…';sourceState={tokyo:{status:'wait',count:0,error:''},bigsight:{status:'wait',count:0,error:''},dome:{status:'wait',count:0,error:''}};const [b,d,t]=await Promise.all([fetchBigSight(),fetchTokyoDome(),fetchTokyo()]);rawEvents=[...b,...d,...t];allEvents=groupRelatedEvents(rawEvents);const states=[sourceState.bigsight,sourceState.dome,sourceState.tokyo];const ok=states.filter(x=>x.status==='ok'||x.status==='empty').length;const err=states.filter(x=>x.status==='err').length;els.status.textContent=err===0?`3情報源 接続済み・${rawEvents.length}件取得 → ${allEvents.length}件に整理`:`${ok}情報源 接続済み・${rawEvents.length}件取得 → ${allEvents.length}件に整理`;els.dot.className=err===0?'dot ok':ok===1?'dot warn':'dot err';renderHero();renderList()}
 document.getElementById('refresh').onclick=loadEvents;document.getElementById('close').onclick=()=>document.getElementById('modal').classList.remove('show');document.getElementById('modal').onclick=e=>{if(e.target.id==='modal')e.currentTarget.classList.remove('show')};function tick(){document.getElementById('clock').textContent=new Intl.DateTimeFormat('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(new Date())}tick();setInterval(tick,1000);let deferredPrompt;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;document.getElementById('installBtn').style.display='block'});document.getElementById('installBtn').onclick=async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;document.getElementById('installBtn').style.display='none'};if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}))}renderTabs();loadEvents();
 </script></body></html>
